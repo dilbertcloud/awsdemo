@@ -1,0 +1,25 @@
+import boto3
+import os
+import sys
+import glob
+
+#Module to push the files from on-premise to S3 bucket.
+ 
+input_path = '<location of the input folder>'
+session = boto3.session.Session(aws_access_key_id='<access key id>',
+                                aws_secret_access_key='<secret access key id>')
+
+
+s3_resource = session.resource('s3') 
+
+filelist=[f for f in glob.glob(input_path + '*.csv')]
+
+if __name__ == "__main__":
+    print(filelist)
+    for i in filelist:
+       file_name = os.path.basename(i)
+       print(file_name)
+       s3_file_name = 'inbound/' + file_name
+       #s3_file_name =   file_name
+       upload_response = s3_resource.Object(bucket_name = 'dilbert-devl-demo-us-east-1-private', key = s3_file_name).upload_file(Filename=i)
+       print(upload_response)
