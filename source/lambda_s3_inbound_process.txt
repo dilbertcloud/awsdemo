@@ -1,0 +1,53 @@
+import boto3
+import os
+
+s3_resource = boto3.resource('s3')
+
+
+def file_length(file_path):
+    with open(file_path) as f:
+        for indx, line in enumerate(f):
+            pass
+
+    return indx + 1
+
+
+def lambda_handler(event, context):
+    # Get the info from the S3 Put event
+    for record in event['Records']:
+        bucket_name = record['s3']['bucket']['name']
+        key = record['s3']['object']['key']
+        file_name = key.split('/')[-1]
+        file_name_no_ext = file_name.split('.')[0]
+        local_path = '/tmp/'+ file_name
+        cnt_file_name = file_name_no_ext + '.ctl'
+        cnt_file_local_path = '/tmp/' + cnt_file_name
+        cnt_file_key = 'inbound_processed/' + cnt_file_name
+        copy_source = { 
+         'Bucket' : bucket_name,
+         'Key'    : key 
+                        }
+        trgt_key = 'inbound_processed/' + file_name
+                   
+ 
+        #Download file from S3 to count the number of records and write a file with the count details.
+        s3_resource.Bucket(bucket_name).download_file(key,local_path)
+        print("Downloaded s3 file, {} to {}".format(key,local_path))
+ 
+    
+        file_cnt = file_length(local_path)
+      
+        with open(cnt_file_local_path, 'w') as f:
+            f.write(str(file_cnt))
+ 
+        # Copy the source file, count file into folder "input_processed" in s3 bucket
+ 
+        ### source file copy to input_processed folder 
+        dest = s3_resource.Bucket(bucket_name)
+        dest.copy(copy_source, trgt_key)
+ 
+        ###s3_resource.meta.client.copy(copy_source, bucket_name, trgt_key)  --> switching between resource and client calls of boto3
+ 
+        ### copy count_file to input_processed folder
+  
+        s3_resource.Object(bucket_name = bucket_name, key = cnt_file_key).upload_file(Filename=cnt_file_local_path)
