@@ -1,0 +1,12 @@
+import boto3
+
+client = boto3.client('stepfunctions')
+
+def lambda_handler(event, context):
+    
+    response = client.start_execution(
+    stateMachineArn='arn:aws:states:us-east-1:542216729913:stateMachine:inbound_reconciliation'
+    
+    
+     )
+    print(response)

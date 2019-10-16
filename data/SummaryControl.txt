@@ -1,0 +1,6 @@
+File Name,Record Count
+ClaimInfo.csv,10
+ClaimLineItemInfo.csv,10
+LoanInfo.csv,10
+lookupcodes.csv,10
+PropInfo.csv,10
