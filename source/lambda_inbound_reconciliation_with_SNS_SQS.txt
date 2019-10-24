@@ -1,0 +1,111 @@
+import boto3
+import os
+import sys
+import glob
+import csv
+
+
+s3_resource = boto3.resource('s3')
+
+# Create an SNS client
+sns_client = boto3.client('sns')
+
+sqs_resource = boto3.resource('sqs')
+
+def match_unmatch_cnt(src_list, ctl_list):
+    missingFiles = []
+    unmatchedFiles = []
+    matchedFiles = []
+#    unrecognizedFiles = []
+    for i in range(len(src_list)):
+        file_found_flag = 'N'
+        for j in range(len(ctl_list)):
+            if src_list[i][0] == ctl_list[j][0]:
+                file_found_flag = 'Y'
+                #print(i[0][0])
+                #print(i[0])
+                if  src_list[i][1] == ctl_list[j][1]:
+                    matchedFiles.append(src_list[i][0])
+                else:
+                    unmatchedFiles.append(src_list[i][0])
+        print(file_found_flag)
+        if file_found_flag == 'N':
+            missingFiles.append(src_list[i][0])
+    print("missingFiles: {}".format("::".join(missingFiles)))
+    print("unmatchedFiles: {}".format("::".join(unmatchedFiles)))
+    print("matchedFiles: {}".format("::".join(matchedFiles)))
+    return(missingFiles, unmatchedFiles, matchedFiles)
+
+
+def lambda_handler(event,context):
+    
+    print(event)
+    index = event["iterator"]["index"]
+    count = event["iterator"]["count"]
+    step = event["iterator"]["step"]
+    
+    bucket = s3_resource.Bucket('dilbert-devl-demo-us-east-1-private')
+
+    ctl_file_key = 'inbound/SummaryControl.txt'
+    ctl_file_local_path = '/tmp/'+ 'SummaryControl.txt'
+    ctl_list = []
+    src_list=[]
+    continueind = 'N'
+   
+ #Download file from S3 to count the number of records and write a file with the count details.
+    bucket.download_file(ctl_file_key,ctl_file_local_path)
+    print("Downloaded s3 file, {} to {}".format(ctl_file_key,ctl_file_local_path))
+    
+    
+    with open(ctl_file_local_path, 'r') as f:
+        next(f)
+        for num,row in enumerate(csv.reader(f)):
+            src_list.append(row)
+        print("src_list: ", src_list)
+    
+    
+    for obj in bucket.objects.filter(Prefix='inbound_processed/'):
+        file_name = obj.key.split('/')[-1]
+        file_suffix = file_name.split('.')[-1]
+        source_file_name = file_name.split('.')[0] + '.csv'
+        if file_suffix == 'ctl':
+            for line in obj.get()['Body'].read().decode('utf-8').splitlines():
+                ctl_list.append([str(source_file_name), str(line)])
+            
+    print("ctl_list: ", ctl_list)
+
+    missingFilesList, unmatchedFilesList, matchedFilesList =  match_unmatch_cnt(src_list, ctl_list)
+    if len(missingFilesList) > 0:
+        index = index + step
+        if index < count:
+            continueind = 'Y'
+            
+        else:
+            continueind = 'N'
+            if len(missingFilesList) > 0 or len(unmatchedFilesList) > 0:
+                messageTxt1 = '!!!! Inbound Reconciliation Process Failed !!!! \n Below are the details of the missing/unmatched files: \n' 
+                missingFileTxt = "Missing Files :--" + '::'.join(missingFilesList) + "\n"
+                unmatchedFileTxt = "Unmatched Files :--" + '::'.join(unmatchedFilesList) + "\n"
+                messagetxt = messageTxt1 + missingFileTxt + unmatchedFileTxt  
+                
+                # Publish a simple message to the specified SNS topic
+                snsResponse = sns_client.publish(
+                           TopicArn='arn:aws:sns:us-east-1:542216729913:InboundReconcileAlert', 
+                           Subject='Inbound Reconciliation Failure Alert',
+                           Message= messagetxt
+                                      )
+               
+                print("SNS Response: ", snsResponse)
+    
+    if continueind == 'N' and len(missingFilesList) == 0 and len(unmatchedFilesList) == 0:
+                # Get the queue
+        queue = sqs_resource.get_queue_by_name(QueueName='InboundQueue')
+        for file in matchedFilesList:
+            sqsResponse = queue.send_message(MessageBody=file)
+    
+    return {
+        "index": index, 
+        "count": count,
+        "step": step, 
+        "continueind": continueind}
+
