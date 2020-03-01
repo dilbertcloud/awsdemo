@@ -1,0 +1,5 @@
+version: 0.0
+os: linux
+files:
+  - source: /ETLPIPELINE/modules/generate_access_logs/*.py
+    destination: /home/ec2-user/source/loggenerator/
